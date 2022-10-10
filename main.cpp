@@ -59,11 +59,13 @@ Vec MapProject1(const LonLat& p0, const LonLat& p1)
 
 Vec MapProject2(const LonLat& p0, const LonLat& p1)
 {
+    // this is WRONG!
     double sin_lat1 = sin(p1.lat);
     double sin_lat1_2 = sin_lat1 * sin_lat1;
     double tmp = 1.0 / sqrt(1.0 - kEarthE2 * sin_lat1_2);
     double rn = kEarthRadiusMax * tmp; // 当前点地心距离
     double rm = kEarthRadiusMax * (1 - kEarthE2) * tmp * tmp * tmp; // 子午圈曲率半径
+    cout << "\33[31m" << fixed << setprecision(12) << tmp << " " << rn << " " << rm << "\33[0m\n";
 
     double x = (p1.lon - p0.lon) * rn * cos(p1.lat);
     double y = (p1.lat - p0.lat) * rm;
@@ -72,7 +74,7 @@ Vec MapProject2(const LonLat& p0, const LonLat& p1)
 
 Vec MapProject3(const LonLat& p0, const LonLat& p1)
 {
-    // simplification of MapProject2
+    // floatify MapProject2
     float sin_lat1 = sin(float(p1.lat));
     float sin_lat1_2 = sin_lat1 * sin_lat1;
     float tmp = 1.0f / sqrt(1.0 - float(kEarthE2) * sin_lat1_2);
@@ -85,9 +87,9 @@ Vec MapProject3(const LonLat& p0, const LonLat& p1)
 
 Vec MapProject4(const LonLat& p0, const LonLat& p1)
 {
-    // simplification of MapProject2
-    double x = float(p1.lon - p0.lon) * cos(float(p1.lat)) * kEarthRadiusMean;
-    double y = float(p1.lat - p0.lat) * kEarthRadiusMean;
+    // simplification of MapProject2, but correct
+    double x = float(p1.lon - p0.lon) * cos(float(p1.lat)) * float(kEarthRadiusMean);
+    double y = float(p1.lat - p0.lat) * float(kEarthRadiusMean);
     return { x, y };
 }
 
@@ -116,7 +118,7 @@ int main()
         auto r2 = MapProject2(p1_rad, p2_rad);
         auto r3 = MapProject3(p1_rad, p2_rad);
         auto r4 = MapProject4(p1_rad, p2_rad);
-        auto& ref = r2;
+        auto& ref = r1;
         cout << "p1: " << p1 << "\n"
              << "p2: " << p2 << "\n"
              << "r1: " << r1 << " " << Diff(ref, r1) << "\n"
