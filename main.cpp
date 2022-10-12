@@ -13,7 +13,7 @@ struct LonLat {
 
 ostream& operator<<(ostream& os, const LonLat& p)
 {
-    os << fixed << setprecision(12) << "{lon[" << p.lon << "] lat[" << p.lat << "]}";
+    os << fixed << setprecision(16) << "{lon[" << p.lon << "] lat[" << p.lat << "]}";
     return os;
 }
 
@@ -23,6 +23,12 @@ LonLat ToRad(const LonLat& p)
     return { p.lon * kDeg2Rad, p.lat * kDeg2Rad };
 }
 
+LonLat ToDeg(const LonLat& p)
+{
+    static constexpr double kRad2Deg = 180.0 / M_PI;
+    return { p.lon * kRad2Deg, p.lat * kRad2Deg };
+}
+
 struct Vec {
     double x;
     double y;
@@ -30,7 +36,7 @@ struct Vec {
 
 ostream& operator<<(ostream& os, const Vec& p)
 {
-    os << fixed << setprecision(12) << "{x[" << p.x << "] y[" << p.y << "]}";
+    os << fixed << setprecision(16) << "{x[" << p.x << "] y[" << p.y << "]}";
     return os;
 }
 
@@ -55,6 +61,28 @@ Vec MapProject1(const LonLat& p0, const LonLat& p1)
     double x = k * cos_lat1 * sin(p1.lon - p0.lon) * kEarthRadiusMean;
     double y = k * (cos_lat0 * sin_lat1 - sin_lat0 * cos_lat1 * cos_d_lon) * kEarthRadiusMean;
     return { x, y };
+}
+
+LonLat MapUnproject1(const LonLat& p0, const Vec& rp)
+{
+    double x_rad = rp.x / kEarthRadiusMean;
+    double y_rad = rp.y / kEarthRadiusMean;
+    double c = sqrt(x_rad * x_rad + y_rad * y_rad);
+    double sin_c = sin(c);
+    double cos_c = cos(c);
+    double sin_lat0 = sin(p0.lat);
+    double cos_lat0 = cos(p0.lat);
+
+    double lat_rad;
+    double lon_rad;
+    if (fabs(c) > numeric_limits<double>::epsilon()) {
+        lat_rad = asin(cos_c * sin_lat0 + (y_rad * sin_c * cos_lat0) / c);
+        lon_rad = (p0.lon + atan2(x_rad * sin_c, c * cos_lat0 * cos_c - y_rad * sin_lat0 * sin_c));
+    } else {
+        lat_rad = p0.lat;
+        lon_rad = p0.lon;
+    }
+    return { lon_rad, lat_rad };
 }
 
 Vec MapProject2(const LonLat& p0, const LonLat& p1)
@@ -88,9 +116,22 @@ Vec MapProject3(const LonLat& p0, const LonLat& p1)
 Vec MapProject4(const LonLat& p0, const LonLat& p1)
 {
     // simplification of MapProject2, but correct
-    double x = float(p1.lon - p0.lon) * cos(float(p1.lat)) * float(kEarthRadiusMean);
-    double y = float(p1.lat - p0.lat) * float(kEarthRadiusMean);
+    using Scalar = float;
+    Scalar x_scale = cos(Scalar(p0.lat)) * Scalar(kEarthRadiusMean);
+    Scalar y_scale = Scalar(kEarthRadiusMean);
+    double x = Scalar(p1.lon - p0.lon) * x_scale;
+    double y = Scalar(p1.lat - p0.lat) * y_scale;
     return { x, y };
+}
+
+LonLat MapUnproject4(const LonLat& p0, const Vec& rp)
+{
+    using Scalar = float;
+    Scalar x_scale = cos(Scalar(p0.lat)) * Scalar(kEarthRadiusMean);
+    Scalar y_scale = Scalar(kEarthRadiusMean);
+    double lon = rp.x / x_scale + p0.lon;
+    double lat = rp.y / y_scale + p0.lat;
+    return { lon, lat };
 }
 
 Vec Diff(const Vec& ref, const Vec& v)
@@ -107,23 +148,30 @@ int main()
         { 116.233323123, 40.149726456 },
         { 113.331021123, 23.118705456 },
         { 113.331094123, 23.118722456 },
-        { 113.355309123, 23.152298456 }
+        { 113.355309123, 23.152298456 },
+        { 113.366920981229, 23.143200799852 },
+        { 113.366920981223, 23.143200808156 }
     };
     for (size_t i = 0; i + 1 < pts.size(); ++i) {
         const auto& p1 = pts[i];
         const auto& p2 = pts[i + 1];
         auto p1_rad = ToRad(p1);
         auto p2_rad = ToRad(p2);
-        auto r1 = MapProject1(p1_rad, p2_rad);
-        auto r2 = MapProject2(p1_rad, p2_rad);
-        auto r3 = MapProject3(p1_rad, p2_rad);
-        auto r4 = MapProject4(p1_rad, p2_rad);
-        auto& ref = r1;
+        auto pr1 = MapProject1(p1_rad, p2_rad);
+        auto up1 = MapUnproject1(p1_rad, pr1);
+        // auto pr2 = MapProject2(p1_rad, p2_rad);
+        // auto pr3 = MapProject3(p1_rad, p2_rad);
+        auto pr4 = MapProject4(p1_rad, p2_rad);
+        auto up4 = MapUnproject4(p1_rad, pr4);
+        auto& ref = pr1;
         cout << "p1: " << p1 << "\n"
              << "p2: " << p2 << "\n"
-             << "r1: " << r1 << " " << Diff(ref, r1) << "\n"
-             << "r2: " << r2 << " " << Diff(ref, r2) << "\n"
-             << "r3: " << r3 << " " << Diff(ref, r3) << "\n"
-             << "r4: " << r4 << " " << Diff(ref, r4) << "\n\n";
+             << "pr1: " << pr1 << " " << Diff(ref, pr1) << "\n"
+             //<< "pr2: " << pr2 << " " << Diff(ref, pr2) << "\n"
+             //<< "pr3: " << pr3 << " " << Diff(ref, pr3) << "\n"
+             << "pr4: " << pr4 << " " << Diff(ref, pr4) << "\n"
+             << "up1:" << ToDeg(up1) << " " << up1 << "\n"
+             << "up4:" << ToDeg(up4) << " " << up4 << "\n";
+        cout << endl;
     }
 }
